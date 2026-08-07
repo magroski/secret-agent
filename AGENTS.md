@@ -54,3 +54,28 @@ changing those, add the attack you thought of before adding the feature.
 `scripts/leak-test.sh` is the end-to-end claim: it runs a real agent session
 against a disposable database and greps the resulting transcript for the
 password in six encodings. It needs docker and the `claude` CLI.
+
+## Releasing
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+`.github/workflows/release.yml` runs the tests, then `scripts/build-macos.sh`,
+and attaches the result to a GitHub release. Run that script locally to get the
+same artifacts in `dist/` — the workflow calls it rather than reimplementing the
+build, so there is one definition of what ships.
+
+Two things about the macOS build are easy to break:
+
+- **cgo is mandatory.** `go-keychain` binds the Security framework, so
+  `CGO_ENABLED=0` does not produce a working darwin binary. Each arch is
+  compiled with `CGO_CFLAGS`/`CGO_LDFLAGS` forcing the target arch.
+- **`lipo` invalidates signatures.** Merging the two arches writes a fresh
+  Mach-O without the signature the Go linker applied, and an unsigned arm64
+  binary will not execute at all. The script re-signs ad-hoc afterwards; the
+  workflow's verify step fails if that stops happening.
+
+Bump `version` in `.claude-plugin/plugin.json`, its `marketplace.json` entry, and
+`.codex-plugin/plugin.json` together — `claude plugin tag` checks the first two
+agree before tagging.

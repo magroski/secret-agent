@@ -38,11 +38,30 @@ environment in one line, and never has a reason to look at the value.
 
 ## Install
 
-**1. The binary** — needs Go 1.26 or newer, and `$(go env GOPATH)/bin` on your
-`PATH`.
+**1. The binary.** On macOS, download the release — a universal build that runs
+on both Apple Silicon and Intel, with no Go toolchain needed. It is a credential
+store, so check the sum rather than piping a download straight into a shell:
+
+```bash
+cd "$(mktemp -d)"
+base=https://github.com/magroski/secret-agent/releases/latest/download
+curl -fsSLO "$base/sa-vault_darwin_universal.tar.gz"
+curl -fsSLO "$base/checksums.txt"
+shasum -a 256 -c checksums.txt      # sa-vault_darwin_universal.tar.gz: OK
+tar -xzf sa-vault_darwin_universal.tar.gz
+sudo mv sa-vault /usr/local/bin/
+```
+
+From source instead — any platform, needs Go 1.26 or newer and
+`$(go env GOPATH)/bin` on your `PATH`:
 
 ```bash
 go install github.com/magroski/secret-agent/cmd/sa-vault@latest
+```
+
+Then create the vault:
+
+```bash
 sa-vault init
 ```
 
@@ -50,6 +69,14 @@ sa-vault init
 item; elsewhere, set `SA_VAULT_PASSPHRASE` or `SA_VAULT_KEK_FILE` first — see
 [Where things live](#where-things-live). `sa-vault doctor` confirms what it
 found.
+
+The release binary is ad-hoc signed, not notarized. Downloading it with `curl`
+as above sets no quarantine flag and it just runs; if you fetch it through a
+browser instead, macOS will refuse it until you clear that flag with
+`xattr -d com.apple.quarantine sa-vault`. Because the Keychain grants silent
+access per-binary, macOS also prompts once after you replace `sa-vault` with a
+new build — choose *Always Allow*, or avoid it entirely with
+`SA_VAULT_KEK_FILE`.
 
 **2. The agent instructions.** Both plugins ship the same skill, which teaches
 the agent the `eval "$(sa-vault env …)"` pattern so it stops asking you to paste
