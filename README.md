@@ -38,27 +38,60 @@ environment in one line, and never has a reason to look at the value.
 
 ## Install
 
+**1. The binary** — needs Go 1.26 or newer, and `$(go env GOPATH)/bin` on your
+`PATH`.
+
 ```bash
 go install github.com/magroski/secret-agent/cmd/sa-vault@latest
 sa-vault init
 ```
 
-**Claude Code**
+`init` creates `~/.sa-vault` and the master key. On macOS that key is a Keychain
+item; elsewhere, set `SA_VAULT_PASSPHRASE` or `SA_VAULT_KEK_FILE` first — see
+[Where things live](#where-things-live). `sa-vault doctor` confirms what it
+found.
+
+**2. The agent instructions.** Both plugins ship the same skill, which teaches
+the agent the `eval "$(sa-vault env …)"` pattern so it stops asking you to paste
+credentials. Install whichever agents you use — the binary above is a
+prerequisite for both, and neither plugin carries it.
+
+```bash
+# Claude Code
+claude plugin marketplace add magroski/secret-agent
+claude plugin install sa-vault@secret-agent
+
+# Codex CLI
+codex plugin marketplace add magroski/secret-agent
+codex plugin add sa-vault@secret-agent
+```
+
+Inside a running Claude Code session, the same thing without leaving the REPL:
 
 ```
 /plugin marketplace add magroski/secret-agent
 /plugin install sa-vault@secret-agent
 ```
 
-**Codex CLI**
+Restart the agent afterwards, then confirm the skill is loaded:
 
 ```bash
-codex plugin marketplace add https://github.com/magroski/secret-agent.git
-codex plugin add sa-vault@secret-agent
+claude plugin details sa-vault    # Skills (1)  using-secrets
+codex plugin list                 # sa-vault@secret-agent  installed, enabled
 ```
 
-The plugin ships a skill that teaches the agent the `eval "$(sa-vault env …)"`
-pattern. Install the binary first; the plugin does not carry it.
+**3. Optional — let the safe path run unattended.** Claude Code permission rules
+keep loading frictionless and the plaintext path deliberate. In
+`~/.claude/settings.json`, or per-project in `.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": ["Bash(sa-vault env:*)"],
+    "ask": ["Bash(sa-vault get:*)"]
+  }
+}
+```
 
 ## Storing credentials
 
@@ -145,9 +178,9 @@ A client that echoes its own connection string in an error message will put that
 credential in the transcript. Prefer credentials that are read-only and cheap to
 rotate.
 
-If you want the harness to police this, Claude Code permission rules are the
-place — `Bash(sa-vault env:*)` on allow and `Bash(sa-vault get:*)` on ask keeps
-the loading path frictionless and the plaintext path deliberate.
+If you want the harness to police this rather than trusting the agent to behave,
+Claude Code permission rules are the place — see step 3 of
+[Install](#install).
 
 ## Where things live
 
@@ -163,8 +196,18 @@ Metadata is deliberately separate so `ls` needs no key and never prompts.
 The master key is one macOS Keychain item. This binary issues exactly one
 keychain query, always naming both the service and the account, and never
 enumerates — `sa-vault doctor --keychain` prints exactly what it touches, and a
-build-time test fails if an enumeration API appears anywhere in the tree. On
-Linux and in CI, set `SA_VAULT_PASSPHRASE` or `SA_VAULT_KEK_FILE`.
+build-time test fails if an enumeration API appears anywhere in the tree.
+
+Three environment variables override the defaults, most explicit first:
+
+| Variable | Effect |
+|---|---|
+| `SA_VAULT_KEK_FILE` | read the master key from a 0600 file holding base64 |
+| `SA_VAULT_PASSPHRASE` | derive it with argon2id; the salt sits next to the vault |
+| `SA_VAULT_DIR` | put the vault somewhere other than `~/.sa-vault` |
+
+There is no keychain outside macOS, and `sa-vault` says so rather than quietly
+falling back to something weaker — on Linux and in CI, set one of the first two.
 
 **There is no backup command.** If the Keychain item goes away, `vault.sealed`
 is unrecoverable — treat the vault as a convenience cache for credentials you
