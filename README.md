@@ -185,7 +185,7 @@ key = os.environ["ES_API_KEY"]      # exported by sa-vault env, absent otherwise
 | `sa-vault show <name>` | one credential, sealed values masked |
 | `sa-vault env <name>` | shell that exports the variables |
 | `sa-vault get <name>` | one bare value, at a terminal only |
-| `sa-vault export <name>` | `KEY=VALUE` lines for an env file, at a terminal only |
+| `sa-vault export <name>` | `KEY='VALUE'` lines for an env file, at a terminal only; `--raw` prints them unquoted for `docker run --env-file` and must never be sourced |
 
 ## What this actually protects against
 
