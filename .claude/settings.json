@@ -1,10 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
-    "allow": [
-      "Bash(sa-vault env:*)"
-    ],
     "ask": [
+      "Bash(sa-vault env:*)",
       "Bash(sa-vault get:*)",
       "Bash(sa-vault export:*)"
     ]

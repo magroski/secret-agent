@@ -87,7 +87,7 @@ func cmdEnv(env Env, args []string) error {
 	}
 	fmt.Fprint(env.Stdout, out.String())
 
-	logEnvAccess(v, bindings)
+	logEnvAccess(v, "env", bindings)
 	if !*quiet {
 		fmt.Fprintf(env.Stderr, "%s: exported %s\n", Bin, strings.Join(exportedNames(bindings), ", "))
 	}
@@ -242,7 +242,7 @@ func displayOf(b binding) string {
 }
 
 // logEnvAccess records one event per credential touched, never a value.
-func logEnvAccess(v *vault.Vault, bindings []binding) {
+func logEnvAccess(v *vault.Vault, tool string, bindings []binding) {
 	log := audit.New(v.Dir())
 	byEntry := map[string][]string{}
 	var order []string
@@ -254,7 +254,7 @@ func logEnvAccess(v *vault.Vault, bindings []binding) {
 	}
 	for _, name := range order {
 		log.Log(audit.Event{
-			Tool: "env", Secret: name, Field: strings.Join(byEntry[name], ","),
+			Tool: tool, Secret: name, Field: strings.Join(byEntry[name], ","),
 			Decision: audit.Allowed,
 		})
 	}

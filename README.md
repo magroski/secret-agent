@@ -15,7 +15,7 @@ agent  $ sa-vault ls
          NAME    VARIABLES                DESCRIPTION
          cdp-es  ES_ENDPOINT ES_API_KEY*  candidate ES cluster (read-only)
 
-agent  $ eval "$(sa-vault env cdp-es)" && python3 report.py
+agent  $ sa-vault exec cdp-es -- python3 report.py
          sa-vault: exported ES_ENDPOINT, ES_API_KEY
          42 candidates matched.
 
@@ -107,18 +107,22 @@ claude plugin details sa-vault    # Skills (1)  using-secrets
 codex plugin list                 # sa-vault@secret-agent  installed, enabled
 ```
 
-**3. Optional — let the safe path run unattended.** Claude Code permission rules
-keep loading frictionless and the plaintext path deliberate. In
+**3. Optional — make every value-printing path deliberate.** Claude Code
+permission rules can stop an agent from printing values unprompted. In
 `~/.claude/settings.json`, or per-project in `.claude/settings.json`:
 
 ```json
 {
   "permissions": {
-    "allow": ["Bash(sa-vault env:*)"],
-    "ask": ["Bash(sa-vault get:*)", "Bash(sa-vault export:*)"]
+    "ask": ["Bash(sa-vault env:*)", "Bash(sa-vault get:*)", "Bash(sa-vault export:*)"]
   }
 }
 ```
+
+Neither `env` nor `exec` belongs in `allow`: run without `eval`, `env` prints
+every value into the transcript, and a prefix rule for `exec` approves whatever
+it wraps — `sa-vault exec pg-ro -- env` included. Left unlisted, `exec` prompts
+with the full command, which is the check you want.
 
 ## Storing credentials
 
@@ -154,36 +158,53 @@ variables one at a time.
 ## Using them
 
 ```bash
-eval "$(sa-vault env cdp-es)" && python3 report.py
+sa-vault exec cdp-es -- python3 report.py
 ```
 
-Everything the credential declares is exported. To place a single value under a
-name of your choosing:
+`exec` runs the command with everything the credential declares in its
+environment, minus `SA_VAULT_PASSPHRASE`. sa-vault itself prints nothing but the
+names it loaded, to stderr, so the agent gets confirmation without the values.
+To place a single value under a name of your choosing:
 
 ```bash
-eval "$(sa-vault env --set DATABASE_URL=pg-ro)"        # the entry's only secret
-eval "$(sa-vault env --set ES_KEY=cdp-es.ES_API_KEY)"  # one variable of a bundle
-eval "$(sa-vault env --tag cdp)"                       # everything tagged cdp
+sa-vault exec --set DATABASE_URL=pg-ro -- ./migrate     # the entry's only secret
+sa-vault exec --set ES_KEY=cdp-es.ES_API_KEY -- ./sync  # one variable of a bundle
+sa-vault exec --tag cdp -- python3 report.py            # everything tagged cdp
 ```
 
-`env` writes shell to stdout and a summary of what it exported — names only — to
-stderr, so the agent gets confirmation without the values. Run at a terminal
-rather than through `eval`, it masks the values instead of splattering them
-across your scrollback.
+No shell sits between `exec` and the command, so `$VAR` on the command line is
+expanded by your shell before anything is loaded. To pass a value as an
+argument, let a shell inside the new environment expand it:
+
+```bash
+sa-vault exec pg-ro -- sh -c 'psql "$DATABASE_URL"'
+```
+
+To load credentials once for several commands, `env` takes the same arguments
+and prints shell that exports them:
+
+```bash
+eval "$(sa-vault env cdp-es)" && python3 extract.py && python3 report.py
+```
+
+Only ever run `env` inside `eval`: its stdout is the values, so run bare in an
+agent's shell it prints them into the transcript. At a terminal it masks them
+instead of splattering them across your scrollback.
 
 Scripts should read their credentials from the environment and never from a
 file:
 
 ```python
 import os
-key = os.environ["ES_API_KEY"]      # exported by sa-vault env, absent otherwise
+key = os.environ["ES_API_KEY"]      # set by sa-vault exec, absent otherwise
 ```
 
 | Command | Returns |
 |---|---|
 | `sa-vault ls` | names, variable names, descriptions — never a value |
 | `sa-vault show <name>` | one credential, sealed values masked |
-| `sa-vault env <name>` | shell that exports the variables |
+| `sa-vault exec <name> -- <cmd>` | nothing; runs `<cmd>` with the variables set |
+| `sa-vault env <name>` | shell that exports the variables, for `eval` only |
 | `sa-vault get <name>` | one bare value, at a terminal only |
 | `sa-vault export <name>` | `KEY=VALUE` lines for an env file, at a terminal only |
 

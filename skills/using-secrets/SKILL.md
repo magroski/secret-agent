@@ -12,36 +12,51 @@ exists and use it. You do not need to see any value, and you should not.
 
 ```bash
 sa-vault ls                                   # what exists
-eval "$(sa-vault env cdp-es)" && python3 report.py
+sa-vault exec cdp-es -- python3 report.py
 ```
 
 `sa-vault ls` prints names, the variables each credential exports, and a
 description. A `*` marks a sealed value. Nothing it prints is secret.
 
-`sa-vault env <name>` prints shell that exports those variables. Evaluating it
-puts the values in the environment of the command you run next, and nowhere
-else. It also prints, to stderr, which variables it exported — that confirmation
+`sa-vault exec <name> -- <command>` runs the command with those variables in its
+environment, and nowhere else. Everything after `--` is the command, run as
+given. sa-vault prints, to stderr, which variables it loaded — that confirmation
 is all you need.
 
-## It has to be one command
+## Passing a value as an argument
 
-Shell state does not survive between your tool calls, so the `eval` and the
-command that uses it must be in the same invocation, joined with `&&`:
+No shell sits between `exec` and the command, so `$DATABASE_URL` on the command
+line is expanded by your shell — before anything is loaded, to nothing. Quote it
+and let a shell inside the new environment expand it:
 
 ```bash
-eval "$(sa-vault env cdp-es)" && python3 report.py     ✅
+sa-vault exec pg-ro -- sh -c 'psql "$DATABASE_URL"'    ✅
 ```
 ```bash
-eval "$(sa-vault env cdp-es)"                          ❌ the next call won't see it
-python3 report.py
+sa-vault exec pg-ro -- psql "$DATABASE_URL"            ❌ expanded too early, empty
 ```
 
 ## Loading one value under a chosen name
 
 ```bash
-eval "$(sa-vault env --set DATABASE_URL=pg-ro)"        # that entry's only secret
-eval "$(sa-vault env --set ES_KEY=cdp-es.ES_API_KEY)"  # one variable of a bundle
-eval "$(sa-vault env --tag cdp)"                       # everything tagged cdp
+sa-vault exec --set DATABASE_URL=pg-ro -- ./migrate     # that entry's only secret
+sa-vault exec --set ES_KEY=cdp-es.ES_API_KEY -- ./sync  # one variable of a bundle
+sa-vault exec --tag cdp -- python3 report.py            # everything tagged cdp
+```
+
+## Alternative: `env`, for several commands
+
+`sa-vault env` takes the same arguments and prints shell that exports the
+variables. Its output *is* the values, so it is only safe inside `eval`. Shell
+state does not survive between your tool calls, so the `eval` and the commands
+that use it must be in the same invocation, joined with `&&`:
+
+```bash
+eval "$(sa-vault env cdp-es)" && python3 extract.py && python3 report.py     ✅
+```
+```bash
+eval "$(sa-vault env cdp-es)"                          ❌ the next call won't see it
+python3 report.py
 ```
 
 ## Code you write reads the environment
@@ -52,24 +67,26 @@ interpolate one into a command line.
 ```python
 # report.py
 import os
-key = os.environ["ES_API_KEY"]      # exported by sa-vault env, absent otherwise
+key = os.environ["ES_API_KEY"]      # set by sa-vault exec, absent otherwise
 ```
 
 ```bash
-eval "$(sa-vault env cdp-es)" && python3 report.py
+sa-vault exec cdp-es -- python3 report.py
 ```
 
 For a program that takes a flag rather than an environment variable, pass the
-variable through without expanding it yourself — `psql "$DATABASE_URL"` is fine,
-because the shell substitutes it and you never see it.
+variable through without expanding it yourself — `sh -c 'psql "$DATABASE_URL"'`
+is fine, because that shell substitutes it and you never see it.
 
 ## Do not read the values
 
 ```bash
 echo "$ES_API_KEY"                     ❌ puts it straight in the transcript
+sa-vault env cdp-es                    ❌ same — without eval it prints every value
 sa-vault get cdp-es --force            ❌ same, and it is audited
 sa-vault export cdp-es --force         ❌ same, every variable at once
 env | grep ES_                         ❌ same
+sa-vault exec cdp-es -- env            ❌ same
 cat .env                               ❌ don't hunt for credentials elsewhere
 ```
 
