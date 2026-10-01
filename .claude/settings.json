@@ -4,7 +4,13 @@
     "ask": [
       "Bash(sa-vault env:*)",
       "Bash(sa-vault get:*)",
-      "Bash(sa-vault export:*)"
+      "Bash(sa-vault export:*)",
+      "Bash(sa-vault add:*)",
+      "Bash(sa-vault edit:*)",
+      "Bash(sa-vault rm:*)",
+      "Bash(sa-vault remove:*)",
+      "Bash(sa-vault import:*)",
+      "Bash(sa-vault init:*)"
     ]
   }
 }

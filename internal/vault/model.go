@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Mask is the fixed-width placeholder shown wherever a value would appear. Its
@@ -80,6 +81,19 @@ func ValidateEntryName(name string) error {
 	return nil
 }
 
+// validateText rejects control characters in free text that listings print.
+// A newline would forge a row in `ls`, which an agent reads to choose a
+// credential; an escape sequence would drive the terminal. The text is not
+// echoed back, for the same reason.
+func validateText(what, s string) error {
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("vault: the %s contains a control character, which a listing cannot show", what)
+		}
+	}
+	return nil
+}
+
 // Validate checks an entry is internally consistent before it is stored.
 func (e *Entry) Validate() error {
 	if err := ValidateEntryName(e.Name); err != nil {
@@ -87,6 +101,14 @@ func (e *Entry) Validate() error {
 	}
 	if len(e.Vars) == 0 {
 		return fmt.Errorf("vault: %q exports no variables", e.Name)
+	}
+	if err := validateText("description", e.Description); err != nil {
+		return err
+	}
+	for _, tag := range e.Tags {
+		if err := validateText("tag", tag); err != nil {
+			return err
+		}
 	}
 
 	seen := map[string]bool{}

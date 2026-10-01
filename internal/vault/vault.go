@@ -158,12 +158,22 @@ func (v *Vault) Put(entry Entry, values map[string]string) error {
 	if err != nil {
 		return err
 	}
-	sealed, err := v.loadSealed()
+	sealed, err := v.openSealed(kek)
 	if err != nil {
 		return err
 	}
+	if old, ok := v.meta.Find(entry.Name); ok {
+		// The data key is bound to the declared variables: a change made here
+		// re-binds it, where one made to vault.json by hand would not.
+		if err := sealed.rebind(kek, old, &entry); err != nil {
+			return err
+		}
+	} else {
+		// A sealed entry with no metadata is left over from an interrupted write.
+		sealed.remove(entry.Name)
+	}
 	if len(values) > 0 {
-		if err := sealed.setFields(kek, entry.Name, values); err != nil {
+		if err := sealed.setFields(kek, &entry, values); err != nil {
 			return err
 		}
 	}
@@ -192,29 +202,39 @@ func (v *Vault) Put(entry Entry, values map[string]string) error {
 
 // UnsealVar unseals a single variable's value.
 func (v *Vault) UnsealVar(name, field string) (string, error) {
-	kek, err := v.masterKey()
+	entry, kek, sealed, err := v.unsealer(name)
 	if err != nil {
 		return "", err
 	}
-	sealed, err := v.loadSealed()
-	if err != nil {
-		return "", err
-	}
-	return sealed.getField(kek, name, field)
+	return sealed.getField(kek, entry, field)
 }
 
 // Unseal returns every sealed value for an entry. Callers must not log the
 // result.
 func (v *Vault) Unseal(name string) (map[string]string, error) {
+	entry, kek, sealed, err := v.unsealer(name)
+	if err != nil {
+		return nil, err
+	}
+	return sealed.getFields(kek, entry)
+}
+
+// unsealer gathers what unsealing needs: the entry's metadata, which its data
+// key is bound to, the master key, and the sealed file.
+func (v *Vault) unsealer(name string) (*Entry, []byte, *sealedFile, error) {
+	entry, ok := v.meta.Find(name)
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("vault: no entry named %q", name)
+	}
 	kek, err := v.masterKey()
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	sealed, err := v.loadSealed()
+	sealed, err := v.openSealed(kek)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	return sealed.getFields(kek, name)
+	return entry, kek, sealed, nil
 }
 
 // Remove deletes an entry and its sealed values.
@@ -242,6 +262,26 @@ func (v *Vault) loadSealed() (*sealedFile, error) {
 		return nil, err
 	}
 	return unmarshalSealed(data)
+}
+
+// openSealed loads the sealed file for a caller holding the master key. A
+// version-1 file is upgraded in place first: its data keys were bound to entry
+// names alone, and must be re-bound to the metadata they belong to.
+func (v *Vault) openSealed(kek []byte) (*sealedFile, error) {
+	sealed, err := v.loadSealed()
+	if err != nil {
+		return nil, err
+	}
+	if sealed.Version == sealedVersion {
+		return sealed, nil
+	}
+	if err := sealed.migrate(kek, v.meta); err != nil {
+		return nil, err
+	}
+	if err := v.saveSealed(sealed); err != nil {
+		return nil, err
+	}
+	return sealed, nil
 }
 
 func (v *Vault) saveSealed(s *sealedFile) error {

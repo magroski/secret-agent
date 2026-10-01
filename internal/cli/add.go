@@ -79,9 +79,6 @@ func cmdAdd(env Env, args []string) error {
 			cleartext[name] = true
 		}
 		for _, name := range order {
-			if err := vault.ValidateVarName(name); err != nil {
-				return fmt.Errorf("%s: %w", *fromFile, err)
-			}
 			if cleartext[name] {
 				entry.Vars = append(entry.Vars, vault.Var{Name: name, Value: parsed[name]})
 			} else {
@@ -269,6 +266,10 @@ func cmdImport(env Env, args []string) error {
 // readDotenv reads KEY=VALUE lines, tolerating comments, blank lines, `export`
 // prefixes, and quoted values. It returns the values and the order they appeared
 // in, so an imported file keeps its shape.
+//
+// Errors name a line, never quote it: in a file of secrets, the line that failed
+// to parse is as likely a value as a key. Multi-line values are not supported,
+// and a quote left open is refused rather than read on, line by line.
 func readDotenv(path string) (map[string]string, []string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -279,6 +280,7 @@ func readDotenv(path string) (map[string]string, []string, error) {
 	var order []string
 
 	for i, line := range strings.Split(string(data), "\n") {
+		lineNo := i + 1
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -287,21 +289,36 @@ func readDotenv(path string) (map[string]string, []string, error) {
 
 		key, value, found := strings.Cut(line, "=")
 		if !found {
-			return nil, nil, fmt.Errorf("%s line %d is not KEY=VALUE: %q", path, i+1, line)
+			return nil, nil, fmt.Errorf("%s line %d is not KEY=VALUE", path, lineNo)
 		}
 		key = strings.TrimSpace(key)
-		if key == "" {
-			return nil, nil, fmt.Errorf("%s line %d has an empty key", path, i+1)
+		if vault.ValidateVarName(key) != nil {
+			return nil, nil, fmt.Errorf("%s line %d: the key is not a usable environment variable name", path, lineNo)
+		}
+		value = strings.TrimSpace(value)
+		if opensQuote(value) {
+			return nil, nil, fmt.Errorf("%s line %d opens a quote that does not close on the same line; "+
+				"multi-line values are not supported here. Store it alone with `%s add <name> --secret %s < file`",
+				path, lineNo, Bin, key)
 		}
 		if _, seen := values[key]; !seen {
 			order = append(order, key)
 		}
-		values[key] = unquote(strings.TrimSpace(value))
+		values[key] = unquote(value)
 	}
 	if len(values) == 0 {
 		return nil, nil, fmt.Errorf("%s has no KEY=VALUE pairs", path)
 	}
 	return values, order, nil
+}
+
+// opensQuote reports a value that starts a quote and never closes it: the first
+// line of a multi-line value.
+func opensQuote(s string) bool {
+	if s == "" || (s[0] != '"' && s[0] != '\'') {
+		return false
+	}
+	return strings.Count(s, s[:1]) == 1
 }
 
 func unquote(s string) string {

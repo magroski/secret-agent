@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -174,10 +175,11 @@ func TestFieldCiphertextIsBoundToItsIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, _ := unmarshalSealed(nil)
-	if err := s.setFields(key, "entry-a", map[string]string{"PASSWORD": "value-a"}); err != nil {
+	entryA := &Entry{Name: "entry-a"}
+	if err := s.setFields(key, entryA, map[string]string{"PASSWORD": "value-a"}); err != nil {
 		t.Fatalf("setFields: %v", err)
 	}
-	if err := s.setFields(key, "entry-a", map[string]string{"API_KEY": "value-b"}); err != nil {
+	if err := s.setFields(key, entryA, map[string]string{"API_KEY": "value-b"}); err != nil {
 		t.Fatalf("setFields: %v", err)
 	}
 
@@ -186,7 +188,7 @@ func TestFieldCiphertextIsBoundToItsIdentity(t *testing.T) {
 	entry.Fields["PASSWORD"], entry.Fields["API_KEY"] = entry.Fields["API_KEY"], entry.Fields["PASSWORD"]
 	s.Entries["entry-a"] = entry
 
-	if _, err := s.getField(key, "entry-a", "PASSWORD"); !errors.Is(err, ErrWrongKey) {
+	if _, err := s.getField(key, entryA, "PASSWORD"); !errors.Is(err, ErrWrongKey) {
 		t.Errorf("swapped ciphertext error = %v, want ErrWrongKey", err)
 	}
 }
@@ -196,10 +198,11 @@ func TestWrongMasterKeyIsRejected(t *testing.T) {
 	other, _ := newKey()
 
 	s, _ := unmarshalSealed(nil)
-	if err := s.setFields(key, "e", map[string]string{"PASSWORD": "v"}); err != nil {
+	e := &Entry{Name: "e"}
+	if err := s.setFields(key, e, map[string]string{"PASSWORD": "v"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.getField(other, "e", "PASSWORD"); !errors.Is(err, ErrWrongKey) {
+	if _, err := s.getField(other, e, "PASSWORD"); !errors.Is(err, ErrWrongKey) {
 		t.Errorf("error = %v, want ErrWrongKey", err)
 	}
 }
@@ -350,5 +353,154 @@ func TestKeyFileRejectsLoosePermissions(t *testing.T) {
 	if _, err := (&fileSource{path: path}).Load(); err == nil ||
 		!strings.Contains(err.Error(), "permissions") {
 		t.Errorf("Load error = %v, want a permissions complaint", err)
+	}
+}
+
+// Public values live in cleartext metadata, which needs no key to edit. The
+// data key is bound to them, so pointing ES_ENDPOINT at another host cannot
+// still unseal the API key that would be sent there.
+func TestHandEditedMetadataCannotUnseal(t *testing.T) {
+	tampers := map[string]func(e *Entry){
+		"public value changed":  func(e *Entry) { e.Vars[0].Value = "https://attacker.example" },
+		"public variable added": func(e *Entry) { e.Vars = append(e.Vars, Var{Name: "LD_PRELOAD", Value: "/tmp/evil.so"}) },
+		"public made secret":    func(e *Entry) { e.Vars[0] = Var{Name: "ES_ENDPOINT", Secret: true} },
+	}
+	for label, tamper := range tampers {
+		t.Run(label, func(t *testing.T) {
+			v := newTestVault(t)
+			if err := v.Put(sampleEntry(), map[string]string{"ES_API_KEY": "k"}); err != nil {
+				t.Fatal(err)
+			}
+			rewriteMetadata(t, v.Dir(), tamper)
+
+			reopened, err := Open(v.Dir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = reopened.UnsealVar("cdp-es", "ES_API_KEY")
+			if err == nil {
+				t.Fatal("unsealed under metadata edited by hand")
+			}
+			if !strings.Contains(err.Error(), "edited") {
+				t.Errorf("error = %v, want it to name the cause", err)
+			}
+		})
+	}
+}
+
+// rewriteMetadata edits vault.json on disk the way a tamperer would: outside
+// Put, with no key.
+func rewriteMetadata(t *testing.T, dir string, edit func(e *Entry)) {
+	t.Helper()
+	path := filepath.Join(dir, MetadataFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var meta Metadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		t.Fatal(err)
+	}
+	edit(&meta.Entries[0])
+	if data, err = json.Marshal(meta); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Files written before version 2 bound each data key to the entry name alone.
+// They must still open, and the first use must re-bind them so that the tamper
+// check above applies from then on.
+func TestLegacySealedFileIsUpgradedOnFirstUse(t *testing.T) {
+	v := newTestVault(t)
+	writeLegacySealed(t, v, sampleEntry(), map[string]string{"ES_API_KEY": "k"})
+
+	if got, err := v.UnsealVar("cdp-es", "ES_API_KEY"); err != nil || got != "k" {
+		t.Fatalf("legacy value = %q, %v; want k", got, err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(v.Dir(), SealedFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file sealedFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	if file.Version != sealedVersion {
+		t.Errorf("sealed file version = %d after use, want %d", file.Version, sealedVersion)
+	}
+
+	rewriteMetadata(t, v.Dir(), func(e *Entry) { e.Vars[0].Value = "https://attacker.example" })
+	reopened, err := Open(v.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.UnsealVar("cdp-es", "ES_API_KEY"); err == nil {
+		t.Error("an upgraded file still unseals under hand-edited metadata")
+	}
+}
+
+// writeLegacySealed writes vault.json and a version-1 vault.sealed as 0.3.0
+// did: fields bound to "<entry>/<field>", the data key to "dek/<entry>" alone.
+func writeLegacySealed(t *testing.T, v *Vault, e Entry, values map[string]string) {
+	t.Helper()
+	kek, err := v.masterKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dek, err := newKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapped, err := seal(kek, dek, []byte("dek/"+e.Name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := map[string]sealedBox{}
+	for name, value := range values {
+		if fields[name], err = seal(dek, []byte(value), []byte(e.Name+"/"+name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	file := sealedFile{Version: 1, Entries: map[string]sealedEntry{e.Name: {WrappedDEK: wrapped, Fields: fields}}}
+	data, err := json.MarshalIndent(file, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePrivate(filepath.Join(v.Dir(), SealedFile), data); err != nil {
+		t.Fatal(err)
+	}
+	v.meta.Upsert(e)
+	if err := v.saveMetadata(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Descriptions and tags are printed in listings an agent reads. A control
+// character could forge a row or drive the terminal.
+func TestValidateRejectsControlCharactersInFreeText(t *testing.T) {
+	ok := sampleEntry()
+	ok.Description = "pÄssword-ünïcode 🔑 cluster"
+	ok.Tags = []string{"cdp", "read-only"}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("Validate rejected plain text: %v", err)
+	}
+
+	bad := map[string]func(e *Entry){
+		"newline in description": func(e *Entry) { e.Description = "x\nforged row" },
+		"return in description":  func(e *Entry) { e.Description = "x\rforged" },
+		"escape in description":  func(e *Entry) { e.Description = "x\x1b[2J" },
+		"tab in description":     func(e *Entry) { e.Description = "x\ty" },
+		"newline in tag":         func(e *Entry) { e.Tags = []string{"a\nb"} },
+	}
+	for label, mutate := range bad {
+		e := sampleEntry()
+		mutate(&e)
+		if err := e.Validate(); err == nil {
+			t.Errorf("Validate accepted %s", label)
+		}
 	}
 }

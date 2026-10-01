@@ -111,14 +111,21 @@ claude plugin details sa-vault    # Skills (1)  using-secrets
 codex plugin list                 # sa-vault@secret-agent  installed, enabled
 ```
 
-**3. Optional — make every value-printing path deliberate.** Claude Code
-permission rules can stop an agent from printing values unprompted. In
-`~/.claude/settings.json`, or per-project in `.claude/settings.json`:
+**3. Optional — make every value-printing path, and every change to the vault,
+deliberate.** Claude Code permission rules can stop an agent from printing
+values unprompted, and from rewriting a credential: a public value such as an
+endpoint, repointed with `edit --var`, would take the secret beside it along the
+next time `exec` runs. In `~/.claude/settings.json`, or per-project in
+`.claude/settings.json`:
 
 ```json
 {
   "permissions": {
-    "ask": ["Bash(sa-vault env:*)", "Bash(sa-vault get:*)", "Bash(sa-vault export:*)"]
+    "ask": [
+      "Bash(sa-vault env:*)", "Bash(sa-vault get:*)", "Bash(sa-vault export:*)",
+      "Bash(sa-vault add:*)", "Bash(sa-vault edit:*)", "Bash(sa-vault rm:*)",
+      "Bash(sa-vault remove:*)", "Bash(sa-vault import:*)", "Bash(sa-vault init:*)"
+    ]
   }
 }
 ```
@@ -242,11 +249,17 @@ best-effort; the permission rule is the control.
 ```
 ~/.sa-vault/
   vault.json      cleartext metadata — names, variable names, public values
-  vault.sealed    encrypted values (XChaCha20-Poly1305, per-entry data keys)
+  vault.sealed    encrypted values (XChaCha20-Poly1305, per-entry data keys,
+                  each bound to its entry's metadata)
   audit.log       every load, append-only. Never contains values.
 ```
 
-Metadata is deliberately separate so `ls` needs no key and never prompts.
+Metadata is deliberately separate so `ls` needs no key and never prompts. Each
+entry's data key is bound to that metadata, public values included, so an edit
+to `vault.json` made by hand stops the entry unsealing rather than redirecting
+its secret. An entry with no sealed value has no data key and is not covered.
+A vault written by 0.3.0 is rewritten in the new format by the first command
+that holds the master key.
 
 The master key is one macOS Keychain item. This binary issues exactly one
 keychain query, always naming both the service and the account, and never

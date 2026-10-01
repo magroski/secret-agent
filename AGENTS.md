@@ -29,6 +29,13 @@ internal/audit/        append-only access log
 - **Metadata must stay free of secret material** so `ls` needs no key. A
   variable marked `Secret` may not carry a `Value`; `vault.Entry.Validate`
   enforces it and a test asserts the metadata file never contains plaintext.
+- **Public values are bound to the data key.** `dekAAD` covers the entry name
+  and every declared variable, so `vault.json` edited by hand cannot unseal;
+  `Put` re-binds on every change made through the CLI. Version-1 sealed files
+  are upgraded the first time the master key is in hand. An entry with no
+  secret has no data key and is not covered.
+- **Errors never quote input that may be a value.** `readDotenv` names the line
+  that failed, not its content: in a `.env`, a line is as likely a value as a key.
 - **Keychain access stays in one file, one exact-match query.** See
   `internal/vault/kek_darwin.go`; `keychain_guard_test.go` enforces it.
 - **`get` and `export` refuse plaintext** unless `--force` when stdout is not a
@@ -39,7 +46,10 @@ internal/audit/        append-only access log
   control. Plaintext should stay awkward; `exec` is the path that should be easy.
 - **No `sa-vault` command goes in a permission `allow` list.** `exec:*` would
   approve whatever command it wraps; bare `env` prints every value. `exec`
-  also drops `SA_VAULT_PASSPHRASE` from the command's environment.
+  also drops `SA_VAULT_PASSPHRASE` from the command's environment. The commands
+  that change the vault — `add`, `edit`, `rm`, `import`, `init` — go in `ask`
+  beside `env`, `get` and `export`: `edit --var` can repoint a public endpoint,
+  and the secret beside it would follow.
 
 ## Reading several secrets
 
