@@ -19,7 +19,7 @@ import (
 // silent access to the binary that created it, so reading anything else would
 // raise a user-visible prompt rather than succeeding quietly.
 //
-// keychain_test.go asserts the absence of enumeration APIs so this property
+// keychain_guard_test.go asserts the absence of enumeration APIs so this property
 // cannot regress unnoticed.
 type keychainSource struct{}
 

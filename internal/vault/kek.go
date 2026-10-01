@@ -27,7 +27,7 @@ type KeySource interface {
 var ErrNoKey = errors.New("vault: no master key found")
 
 // Keychain identity. Both attributes are always supplied together; see
-// keychain_darwin.go for why that matters.
+// kek_darwin.go for why that matters.
 const (
 	KeychainService = "com.magroski.sa-vault"
 	KeychainAccount = "vault-kek"
