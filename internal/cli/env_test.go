@@ -59,10 +59,43 @@ func (h *harness) mustRun(stdin string, args ...string) string {
 // variable, which is the only honest way to test that quoting holds.
 func evalAndEcho(t *testing.T, exports, varName string) string {
 	t.Helper()
-	script := exports + "\nprintf '%s' \"$" + varName + "\""
-	out, err := exec.Command("/bin/sh", "-c", script).Output()
+	return evalIn(t, "/bin/sh", exports, varName)
+}
+
+// evalShells are the shells the README's eval "$(sa-vault env x)" works in.
+// They disagree on quoting: fish, unlike POSIX, honours \' inside '...'.
+var evalShells = []string{"sh", "dash", "bash", "zsh", "fish"}
+
+// forEachShell runs fn as a subtest under each of shells installed here.
+func forEachShell(t *testing.T, shells []string, fn func(t *testing.T, shell string)) {
+	t.Helper()
+	for _, name := range shells {
+		t.Run(name, func(t *testing.T) {
+			path, err := exec.LookPath(name)
+			if err != nil {
+				t.Skipf("%s is not installed", name)
+			}
+			fn(t, path)
+		})
+	}
+}
+
+// evalIn evaluates the exports in shell the way the README does, then prints
+// back one variable. The text is valid fish too, which has $(...) since 3.4.
+// It runs in an empty directory, so a stray `touch ./x` litters nothing.
+func evalIn(t *testing.T, shell, exports, varName string) string {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "exports")
+	writeFile(t, file, exports)
+
+	script := `eval "$(cat '` + file + `')"` + "\nprintf '%s' \"$" + varName + "\""
+	cmd := exec.Command(shell, "-c", script)
+	cmd.Dir = t.TempDir()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("shell rejected the emitted exports: %v\n%s", err, exports)
+		t.Fatalf("%s rejected the emitted exports: %v\n%s\n%s", shell, err, stderr.String(), exports)
 	}
 	return string(out)
 }
@@ -86,20 +119,25 @@ func TestEnvQuotingSurvivesARealShell(t *testing.T) {
 		"unicode":         "pÄssword-ünïcode-🔑",
 		"leading hyphen":  "--not-a-flag",
 		"whitespace only": "   \t  ",
+		// fish reads \' and \\ inside single quotes as escapes.
+		"fish quote escape":  `\'; touch ./pwned; #`,
+		"escaped quotes":     `\'\'`,
+		"trailing backslash": `x\`,
+		"backslash pair":     `a\\b`,
 	}
 
 	for label, value := range nasty {
 		t.Run(label, func(t *testing.T) {
 			h := newHarness(t)
 			h.mustRun(value, "add", "TEST_SECRET")
-
 			exports := h.mustRun("", "env", "TEST_SECRET")
-			got := evalAndEcho(t, exports, "TEST_SECRET")
 
-			if got != value {
-				t.Errorf("value round-tripped through the shell as %q, want %q\nexports: %s",
-					got, value, exports)
-			}
+			forEachShell(t, evalShells, func(t *testing.T, shell string) {
+				if got := evalIn(t, shell, exports, "TEST_SECRET"); got != value {
+					t.Errorf("value round-tripped through %s as %q, want %q\nexports: %s",
+						shell, got, value, exports)
+				}
+			})
 		})
 	}
 }
@@ -107,15 +145,27 @@ func TestEnvQuotingSurvivesARealShell(t *testing.T) {
 // The escape that matters most, checked against the file system rather than the
 // variable: a crafted value must not be able to run a command.
 func TestEnvValueCannotExecuteCommands(t *testing.T) {
-	h := newHarness(t)
 	marker := filepath.Join(t.TempDir(), "pwned")
+	attacks := map[string]string{
+		"posix breakout": `'; touch ` + marker + `; echo '`,
+		// Under fish, the POSIX escape '\'' leaves the quote open, not closed.
+		"fish breakout": `\'; touch ` + marker + `; #`,
+	}
 
-	h.mustRun(`'; touch `+marker+`; echo '`, "add", "TEST_SECRET")
-	exports := h.mustRun("", "env", "TEST_SECRET")
-	evalAndEcho(t, exports, "TEST_SECRET")
+	for label, attack := range attacks {
+		t.Run(label, func(t *testing.T) {
+			h := newHarness(t)
+			h.mustRun(attack, "add", "TEST_SECRET")
+			exports := h.mustRun("", "env", "TEST_SECRET")
 
-	if _, err := exec.Command("test", "-e", marker).Output(); err == nil {
-		t.Fatal("the value escaped its quotes and executed a command")
+			forEachShell(t, evalShells, func(t *testing.T, shell string) {
+				evalIn(t, shell, exports, "TEST_SECRET")
+				// Removed on detection, so each shell is judged on its own.
+				if err := os.Remove(marker); err == nil {
+					t.Errorf("under %s the value escaped its quotes and executed a command", shell)
+				}
+			})
+		})
 	}
 }
 

@@ -15,11 +15,14 @@ internal/audit/        append-only access log
 
 ## Rules that are not negotiable
 
-- **`env` output is executed.** Values are wrapped in single quotes with `'`
-  escaped as `'\''`; variable names are validated against the POSIX name rules
-  on the way in *and* again on the way out, because a name is the one part of
-  that string quoting cannot contain. `TestEnvQuotingSurvivesARealShell` runs
-  the emitted shell through `/bin/sh` — extend it rather than reasoning about it.
+- **`env` output is executed.** Values are wrapped in single quotes, with `'`
+  and `\` each emitted double-quoted (`'"'"'`, `'"\\"'`) because fish, unlike
+  POSIX, honours `\'` inside single quotes; variable names are validated
+  against the POSIX name rules on the way in *and* again on the way out,
+  because a name is the one part of that string quoting cannot contain.
+  `TestEnvQuotingSurvivesARealShell` runs the emitted shell through every
+  installed shell among sh, dash, bash, zsh and fish — extend it rather than
+  reasoning about it.
 - **Secrets never reach argv.** Not when adding them, not when using them. argv
   is readable by every process on the machine.
 - **Metadata must stay free of secret material** so `ls` needs no key. A

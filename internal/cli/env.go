@@ -260,9 +260,15 @@ func logEnvAccess(v *vault.Vault, bindings []binding) {
 	}
 }
 
-// shellQuote wraps a value in single quotes, which suppress every form of shell
-// interpretation. The only character that needs handling is the single quote
-// itself: close the string, emit an escaped quote, reopen.
+// shellQuoter escapes for single quotes that POSIX shells and fish read alike.
+// POSIX takes '...' literally, but fish honours \' and \\ inside it, so the
+// usual escape for ' (close, \', reopen) lets `\'; touch x; #` run under fish.
+// Both ' and \ therefore close the quote, appear double-quoted, and reopen:
+// it's → 'it'"'"'s', a\b → 'a'"\\"'b'. One pass, so a replacement's own
+// quotes are never escaped again.
+var shellQuoter = strings.NewReplacer(`\`, `'"\\"'`, `'`, `'"'"'`)
+
+// shellQuote wraps a value so no shell interprets any part of it.
 func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return "'" + shellQuoter.Replace(s) + "'"
 }
