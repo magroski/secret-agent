@@ -115,7 +115,7 @@ keep loading frictionless and the plaintext path deliberate. In
 {
   "permissions": {
     "allow": ["Bash(sa-vault env:*)"],
-    "ask": ["Bash(sa-vault get:*)"]
+    "ask": ["Bash(sa-vault get:*)", "Bash(sa-vault export:*)"]
   }
 }
 ```
@@ -185,6 +185,7 @@ key = os.environ["ES_API_KEY"]      # exported by sa-vault env, absent otherwise
 | `sa-vault show <name>` | one credential, sealed values masked |
 | `sa-vault env <name>` | shell that exports the variables |
 | `sa-vault get <name>` | one bare value, at a terminal only |
+| `sa-vault export <name>` | `KEY=VALUE` lines for an env file, at a terminal only |
 
 ## What this actually protects against
 

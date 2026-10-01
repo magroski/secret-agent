@@ -5,7 +5,8 @@
       "Bash(sa-vault env:*)"
     ],
     "ask": [
-      "Bash(sa-vault get:*)"
+      "Bash(sa-vault get:*)",
+      "Bash(sa-vault export:*)"
     ]
   }
 }

@@ -68,6 +68,7 @@ because the shell substitutes it and you never see it.
 ```bash
 echo "$ES_API_KEY"                     ❌ puts it straight in the transcript
 sa-vault get cdp-es --force            ❌ same, and it is audited
+sa-vault export cdp-es --force         ❌ same, every variable at once
 env | grep ES_                         ❌ same
 cat .env                               ❌ don't hunt for credentials elsewhere
 ```

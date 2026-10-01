@@ -39,6 +39,7 @@ const usage = `sa-vault — keep credentials out of your agent's transcript
   sa-vault show <name>             show one credential, values masked
   sa-vault env <name>...           print shell that exports the variables
   sa-vault get <name>              print one value (terminal only)
+  sa-vault export <name>           print KEY=VALUE lines (terminal only)
   sa-vault edit <name>             change metadata or rotate a value
   sa-vault rm <name>               remove a credential
   sa-vault import <file> --as <n>  store a .env file as one credential
@@ -71,6 +72,8 @@ func Run(_ context.Context, env Env, args []string) int {
 		err = cmdEnv(env, rest)
 	case "get":
 		err = cmdGet(env, rest)
+	case "export":
+		err = cmdExport(env, rest)
 	case "list", "ls":
 		err = cmdList(env, rest)
 	case "show", "describe":
