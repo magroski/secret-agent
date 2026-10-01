@@ -70,6 +70,14 @@ func cmdEdit(env Env, args []string) error {
 		if err := vault.ValidateVarName(name); err != nil {
 			return err
 		}
+		// --var would store a secret's value in cleartext metadata. Unsealing
+		// must be deliberate: --rm-var NAME, applied above, removes it first.
+		if current, ok := entry.Var(name); ok && current.Secret {
+			return fmt.Errorf("%s of %q is secret; --var would store its value in cleartext. Nothing changed.\n"+
+				"Rotate it with --set %s (prompted, never in argv), or unseal it deliberately with --rm-var %s.\n"+
+				"The value you passed is in argv and shell history: if it is real, treat it as exposed and rotate it",
+				name, entry.Name, name, name)
+		}
 		entry.Vars = upsertVar(entry.Vars, vault.Var{Name: name, Value: value})
 	}
 

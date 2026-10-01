@@ -40,13 +40,17 @@ environment in one line, and never has a reason to look at the value.
 
 **1. The binary.** On macOS, download the release — a universal build that runs
 on both Apple Silicon and Intel, with no Go toolchain needed. It is a credential
-store, so check the sum rather than piping a download straight into a shell:
+store, so verify it rather than piping a download straight into a shell.
+`gh attestation verify` proves the tarball was built by this repository's
+release workflow. The checksum ships from the same place as the tarball, so it
+only catches a corrupted download:
 
 ```bash
 cd "$(mktemp -d)"
 base=https://github.com/magroski/secret-agent/releases/latest/download
 curl -fsSLO "$base/sa-vault_darwin_universal.tar.gz"
 curl -fsSLO "$base/checksums.txt"
+gh attestation verify sa-vault_darwin_universal.tar.gz -R magroski/secret-agent
 shasum -a 256 -c checksums.txt      # sa-vault_darwin_universal.tar.gz: OK
 tar -xzf sa-vault_darwin_universal.tar.gz
 sudo mv sa-vault /usr/local/bin/
