@@ -37,6 +37,7 @@ const usage = `sa-vault — keep credentials out of your agent's transcript
   sa-vault add <name>              store a credential
   sa-vault ls                      list stored credentials
   sa-vault show <name>             show one credential, values masked
+  sa-vault exec <name>... -- <cmd> run a command with the variables set
   sa-vault env <name>...           print shell that exports the variables
   sa-vault get <name>              print one value (terminal only)
   sa-vault export <name>           print KEY=VALUE lines (terminal only)
@@ -49,7 +50,7 @@ const usage = `sa-vault — keep credentials out of your agent's transcript
 Using a credential — the variables land in the environment of one command,
 not in the conversation:
 
-  eval "$(sa-vault env cdp-es)" && python3 report.py
+  sa-vault exec cdp-es -- python3 report.py
 
 Run 'sa-vault <command> -h' for the flags of a command.`
 
@@ -68,6 +69,8 @@ func Run(_ context.Context, env Env, args []string) int {
 		err = cmdInit(env, rest)
 	case "add":
 		err = cmdAdd(env, rest)
+	case execCommand:
+		err = cmdExec(env, rest)
 	case "env":
 		err = cmdEnv(env, rest)
 	case "get":
