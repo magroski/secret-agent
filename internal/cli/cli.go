@@ -193,6 +193,11 @@ func cmdDoctor(env Env, args []string) error {
 
 	fmt.Fprintf(env.Stdout, "vault dir     %s\n", v.Dir())
 	fmt.Fprintf(env.Stdout, "master key    %s\n", v.KeySourceDescription())
+	// An env passphrase reaches every child process, so a stray `env` leaks it.
+	if vault.PassphraseFromEnv() {
+		fmt.Fprintf(env.Stdout, "warning       $SA_VAULT_PASSPHRASE is inherited by every command the shell runs, "+
+			"an agent's included; prefer SA_VAULT_PASSPHRASE_FILE\n")
+	}
 	fmt.Fprintf(env.Stdout, "initialized   %t\n", v.Initialized())
 	fmt.Fprintf(env.Stdout, "credentials   %d\n", len(v.List()))
 

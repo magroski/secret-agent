@@ -66,8 +66,8 @@ sa-vault init
 ```
 
 `init` creates `~/.sa-vault` and the master key. On macOS that key is a Keychain
-item; elsewhere, set `SA_VAULT_PASSPHRASE` or `SA_VAULT_KEK_FILE` first — see
-[Where things live](#where-things-live). `sa-vault doctor` confirms what it
+item; elsewhere, set `SA_VAULT_PASSPHRASE_FILE` or `SA_VAULT_KEK_FILE` first —
+see [Where things live](#where-things-live). `sa-vault doctor` confirms what it
 found.
 
 The release binary is ad-hoc signed, not notarized. Downloading it with `curl`
@@ -224,18 +224,23 @@ Metadata is deliberately separate so `ls` needs no key and never prompts.
 The master key is one macOS Keychain item. This binary issues exactly one
 keychain query, always naming both the service and the account, and never
 enumerates — `sa-vault doctor --keychain` prints exactly what it touches, and a
-build-time test fails if an enumeration API appears anywhere in the tree.
+test parses the tree and fails if any other file imports the keychain library,
+or if that one file enumerates or builds a query missing either attribute.
 
-Three environment variables override the defaults, most explicit first:
+Four environment variables override the defaults, most explicit first:
 
 | Variable | Effect |
 |---|---|
 | `SA_VAULT_KEK_FILE` | read the master key from a 0600 file holding base64 |
-| `SA_VAULT_PASSPHRASE` | derive it with argon2id; the salt sits next to the vault |
+| `SA_VAULT_PASSPHRASE_FILE` | derive it with argon2id from the passphrase in a 0600 file; the salt sits next to the vault |
+| `SA_VAULT_PASSPHRASE` | the same, from the variable itself — avoid: every command the shell runs inherits it, an agent's included, and `doctor` warns |
 | `SA_VAULT_DIR` | put the vault somewhere other than `~/.sa-vault` |
 
 There is no keychain outside macOS, and `sa-vault` says so rather than quietly
-falling back to something weaker — on Linux and in CI, set one of the first two.
+falling back to something weaker — on Linux and in CI, set
+`SA_VAULT_PASSPHRASE_FILE` or `SA_VAULT_KEK_FILE`. A passphrase file derives
+the same key as the same passphrase in `SA_VAULT_PASSPHRASE` (trailing newlines
+are ignored), so switching needs no re-init.
 
 **There is no backup command.** If the Keychain item goes away, `vault.sealed`
 is unrecoverable — treat the vault as a convenience cache for credentials you

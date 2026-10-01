@@ -33,19 +33,39 @@ const (
 	KeychainAccount = "vault-kek"
 )
 
+// Environment variables that select the key source; see NewKeySource.
+const (
+	envKEKFile        = "SA_VAULT_KEK_FILE"
+	envPassphraseFile = "SA_VAULT_PASSPHRASE_FILE"
+	envPassphrase     = "SA_VAULT_PASSPHRASE"
+)
+
 // NewKeySource picks a key source from the environment, most explicit first.
 //
-//	SA_VAULT_KEK_FILE    a 0600 file holding a base64 master key
-//	SA_VAULT_PASSPHRASE  derive the key from a passphrase (CI, Linux, SSH)
-//	(default)                the OS keychain, where one is available
+//	SA_VAULT_KEK_FILE         a 0600 file holding a base64 master key
+//	SA_VAULT_PASSPHRASE_FILE  a 0600 file holding a passphrase (CI, Linux, SSH)
+//	SA_VAULT_PASSPHRASE       the passphrase itself; every child process inherits it
+//	(default)                 the OS keychain, where one is available
 func NewKeySource(dir string) KeySource {
-	if path := os.Getenv("SA_VAULT_KEK_FILE"); path != "" {
+	saltPath := filepath.Join(dir, "kek.salt")
+	if path := os.Getenv(envKEKFile); path != "" {
 		return &fileSource{path: path}
 	}
-	if passphrase := os.Getenv("SA_VAULT_PASSPHRASE"); passphrase != "" {
-		return &passphraseSource{passphrase: passphrase, saltPath: filepath.Join(dir, "kek.salt")}
+	if path := os.Getenv(envPassphraseFile); path != "" {
+		return &passphraseSource{file: path, saltPath: saltPath}
+	}
+	if passphrase := os.Getenv(envPassphrase); passphrase != "" {
+		return &passphraseSource{passphrase: passphrase, saltPath: saltPath}
 	}
 	return newOSKeySource()
+}
+
+// PassphraseFromEnv reports whether the master key is derived from
+// $SA_VAULT_PASSPHRASE. Every command the shell runs inherits that variable, an
+// agent's included, so `sa-vault doctor` warns about it.
+func PassphraseFromEnv() bool {
+	source, ok := NewKeySource("").(*passphraseSource)
+	return ok && source.file == ""
 }
 
 // fileSource keeps the master key in a 0600 file. It has no keychain surface at
@@ -86,12 +106,37 @@ func (f *fileSource) Store(key []byte) error {
 // passphraseSource derives the master key from a passphrase with argon2id. The
 // salt is stored alongside the vault; it is not secret.
 type passphraseSource struct {
-	passphrase string
+	passphrase string // from $SA_VAULT_PASSPHRASE, when file is unset
+	file       string // $SA_VAULT_PASSPHRASE_FILE, read on every load
 	saltPath   string
 }
 
 func (p *passphraseSource) Describe() string {
-	return "passphrase from $SA_VAULT_PASSPHRASE (salt " + p.saltPath + ")"
+	if p.file != "" {
+		return "passphrase file " + p.file + " (salt " + p.saltPath + ")"
+	}
+	return "passphrase from $" + envPassphrase + " (salt " + p.saltPath + ")"
+}
+
+// read returns the passphrase. A file is held to the key file's permission
+// rule and loses trailing newlines exactly as `$(cat file)` would, so moving a
+// passphrase from the environment into a file derives the same key.
+func (p *passphraseSource) read() (string, error) {
+	if p.file == "" {
+		return p.passphrase, nil
+	}
+	if err := checkPrivatePerms(p.file); err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(p.file)
+	if err != nil {
+		return "", err
+	}
+	passphrase := strings.TrimRight(string(data), "\n")
+	if passphrase == "" {
+		return "", fmt.Errorf("vault: passphrase file %s is empty", p.file)
+	}
+	return passphrase, nil
 }
 
 // Argon2id parameters, chosen for an interactive-latency unlock on a laptop.
@@ -102,7 +147,13 @@ const (
 	saltSize     = 16
 )
 
+// Load reads the passphrase before the salt, so a bad passphrase file stops
+// `init` before it writes one.
 func (p *passphraseSource) Load() ([]byte, error) {
+	passphrase, err := p.read()
+	if err != nil {
+		return nil, err
+	}
 	salt, err := os.ReadFile(p.saltPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNoKey
@@ -110,7 +161,7 @@ func (p *passphraseSource) Load() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return p.derive(salt), nil
+	return derive(passphrase, salt), nil
 }
 
 // Store records a fresh salt. The key itself is never written: it is recomputed
@@ -126,6 +177,6 @@ func (p *passphraseSource) Store([]byte) error {
 	return writePrivate(p.saltPath, salt)
 }
 
-func (p *passphraseSource) derive(salt []byte) []byte {
-	return argon2.IDKey([]byte(p.passphrase), salt, argonTime, argonMemory, argonThreads, KeySize)
+func derive(passphrase string, salt []byte) []byte {
+	return argon2.IDKey([]byte(passphrase), salt, argonTime, argonMemory, argonThreads, KeySize)
 }
