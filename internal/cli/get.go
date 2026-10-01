@@ -25,15 +25,12 @@ func cmdGet(env Env, args []string) error {
 	}
 
 	// `get` prints a bare value, which is what you want when copying one into a
-	// web form and never what you want inside an agent's shell. Requiring a
-	// terminal does not make capture impossible — a pty defeats it — but it
-	// keeps the value from being piped somewhere by accident, and makes doing so
-	// a deliberate act.
-	if !stdoutIsTerminal(env) && !*force {
-		return fmt.Errorf("refusing to print a credential to something that is not a terminal.\n"+
-			"If you meant to pipe it, pass --force.\n"+
-			"To give a value to a command, use `%s env` instead — it exports the variable\n"+
-			"without the value passing through your terminal or your transcript", Bin)
+	// web form and never what you want inside an agent's shell. The guard does
+	// not make capture impossible — an unlisted harness with a pty defeats it —
+	// but it keeps the value from being piped somewhere by accident, and makes
+	// doing so a deliberate act.
+	if err := guardPlaintext(env, "get", positional[0], *force); err != nil {
+		return err
 	}
 
 	v, err := openVault()
@@ -57,7 +54,7 @@ func cmdGet(env Env, args []string) error {
 		}
 	}
 
-	audit.New(v.Dir()).Log(audit.Event{
+	auditLog(env, v.Dir()).Log(audit.Event{
 		Tool: "get", Secret: entry.Name, Field: variable.Name,
 		Decision: audit.Allowed, Reason: "printed at the terminal by the vault owner",
 	})

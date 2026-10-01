@@ -27,8 +27,12 @@ internal/audit/        append-only access log
   enforces it and a test asserts the metadata file never contains plaintext.
 - **Keychain access stays in one file, one exact-match query.** See
   `internal/vault/kek_darwin.go`; `keychain_guard_test.go` enforces it.
-- **`get` requires a terminal** unless `--force`. It is the plaintext path and
-  should stay awkward; `env` is the path that should be easy.
+- **`get` and `export` refuse plaintext** unless `--force` when stdout is not a
+  terminal *or* an agent-shell marker (`CLAUDECODE`, `CODEX_SANDBOX`, …) is set
+  — a pty makes an agent's shell look like a terminal. One decision,
+  `plaintextRefusal` in `internal/cli/guard.go`; each refusal is audited as
+  denied. The marker list is best-effort; the Claude Code `ask` rule is the real
+  control. Plaintext should stay awkward; `env` is the path that should be easy.
 
 ## Reading several secrets
 

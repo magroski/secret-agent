@@ -7,6 +7,8 @@ package audit
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -36,11 +38,20 @@ type Event struct {
 // FileName is the log's name within the vault directory.
 const FileName = "audit.log"
 
+// writeFailure prefixes the warning printed when an event could not be recorded.
+const writeFailure = "sa-vault: audit log not written: "
+
 // Logger appends events to a vault's audit log.
-type Logger struct{ path string }
+type Logger struct {
+	path string
+	// Stderr receives write failures; os.Stderr unless a caller redirects it.
+	Stderr io.Writer
+}
 
 // New returns a logger writing to dir/audit.log.
-func New(dir string) *Logger { return &Logger{path: filepath.Join(dir, FileName)} }
+func New(dir string) *Logger {
+	return &Logger{path: filepath.Join(dir, FileName), Stderr: os.Stderr}
+}
 
 // Log appends an event.
 //
@@ -52,17 +63,25 @@ func (l *Logger) Log(event Event) {
 		event.Time = time.Now().UTC()
 	}
 
+	if err := l.write(event); err != nil {
+		fmt.Fprintln(l.Stderr, writeFailure+err.Error())
+	}
+}
+
+// write appends the event as one JSON line.
+func (l *Logger) write(event Event) error {
 	line, err := json.Marshal(event)
 	if err != nil {
-		return
+		return err
 	}
 
 	file, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
-		return
+		return err
 	}
 	defer file.Close()
-	file.Write(append(line, '\n'))
+	_, err = file.Write(append(line, '\n'))
+	return err
 }
 
 // Read returns the most recent events, newest last.
