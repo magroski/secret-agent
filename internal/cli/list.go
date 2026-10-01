@@ -129,6 +129,10 @@ func cmdAudit(env Env, args []string) error {
 		if e.Reason != "" {
 			detail = e.Reason
 		}
+		// Refusals read "denied: <condition>" so they stand out from accesses.
+		if e.Decision == audit.Denied {
+			detail = string(audit.Denied) + ": " + detail
+		}
 		rows = append(rows, []string{
 			e.Time.Local().Format("2006-01-02 15:04:05"), e.Tool, e.Secret, detail,
 		})

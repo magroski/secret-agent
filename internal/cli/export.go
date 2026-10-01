@@ -32,11 +32,8 @@ func cmdExport(env Env, args []string) error {
 	}
 
 	// Every value in the clear: guarded like `get`, for the same reason.
-	if !stdoutIsTerminal(env) && !*force {
-		return fmt.Errorf("refusing to print credentials to something that is not a terminal.\n"+
-			"To write an env file, pass --force.\n"+
-			"To give the values to a command, use `%s env` instead — it exports the variables\n"+
-			"without the values passing through your terminal or your transcript", Bin)
+	if err := guardPlaintext(env, "export", positional[0], *force); err != nil {
+		return err
 	}
 
 	v, err := openVault()

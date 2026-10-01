@@ -208,7 +208,9 @@ rotate.
 
 If you want the harness to police this rather than trusting the agent to behave,
 Claude Code permission rules are the place — see step 3 of
-[Install](#install).
+[Install](#install). `get` and `export` also refuse inside a shell carrying a
+known agent marker (`CLAUDECODE`, `CODEX_SANDBOX`), but that list is
+best-effort; the permission rule is the control.
 
 ## Where things live
 
@@ -251,7 +253,12 @@ sa-vault audit -n 20
 WHEN                 COMMAND  CREDENTIAL  VARIABLES
 2026-08-06 15:05:13  env      cdp-es      ES_ENDPOINT,ES_API_KEY
 2026-08-06 15:05:28  get      pg-ro       DATABASE_URL
+2026-08-06 15:05:41  get      pg-ro       denied: stdout is not a terminal
 ```
+
+Refused `get` and `export` calls are recorded as `denied`, with the condition
+that triggered the refusal. A log that cannot be written never blocks a command;
+it prints `sa-vault: audit log not written: …` on stderr instead.
 
 ## License
 
