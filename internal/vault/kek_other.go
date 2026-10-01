@@ -11,7 +11,7 @@ type unsupportedOSKeySource struct{}
 func newOSKeySource() KeySource { return &unsupportedOSKeySource{} }
 
 const noKeychainHelp = "vault: no OS keychain on this platform; " +
-	"set SA_VAULT_PASSPHRASE, or point SA_VAULT_KEK_FILE at a 0600 key file"
+	"point SA_VAULT_PASSPHRASE_FILE at a 0600 passphrase file, or SA_VAULT_KEK_FILE at a 0600 key file"
 
 func (unsupportedOSKeySource) Describe() string { return "unavailable (no OS keychain)" }
 
