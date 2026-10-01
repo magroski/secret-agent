@@ -80,7 +80,7 @@ func cmdExport(env Env, args []string) error {
 	}
 	fmt.Fprint(env.Stdout, out.String())
 
-	audit.New(v.Dir()).Log(audit.Event{
+	auditLog(env, v.Dir()).Log(audit.Event{
 		Tool: "export", Secret: positional[0], Field: strings.Join(exportedNames(bindings), ","),
 		Decision: audit.Allowed,
 	})

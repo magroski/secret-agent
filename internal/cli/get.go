@@ -54,9 +54,14 @@ func cmdGet(env Env, args []string) error {
 		}
 	}
 
+	// --force skips the guard, so the value may have gone anywhere.
+	reason := "printed at a terminal"
+	if *force {
+		reason = "printed with --force"
+	}
 	auditLog(env, v.Dir()).Log(audit.Event{
 		Tool: "get", Secret: entry.Name, Field: variable.Name,
-		Decision: audit.Allowed, Reason: "printed at the terminal by the vault owner",
+		Decision: audit.Allowed, Reason: reason,
 	})
 
 	// The value alone on stdout, so `sa-vault get x --force | pbcopy` behaves.

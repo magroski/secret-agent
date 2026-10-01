@@ -25,7 +25,7 @@ const (
 // Event is one line of the log.
 type Event struct {
 	Time time.Time `json:"time"`
-	// Tool is the command that ran: "env", "get" or "export".
+	// Tool is the command that ran: "exec", "env", "get" or "export".
 	Tool   string `json:"tool"`
 	Secret string `json:"secret,omitempty"`
 	// Field names the variables involved, comma-separated. Names only, never

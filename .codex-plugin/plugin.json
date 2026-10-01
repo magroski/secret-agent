@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Secret Agent",
     "shortDescription": "Use your credentials without exposing them",
-    "longDescription": "Stores credentials as named bundles of environment variables. Codex can see what exists and load one into the environment of the command it is about to run with eval \"$(sa-vault env <name>)\", so it gets the result without the value entering the conversation or the session transcript.",
+    "longDescription": "Stores credentials as named bundles of environment variables. Codex can see what exists and load one into the environment of the command it is about to run with sa-vault exec <name> -- <command>, so it gets the result without the value entering the conversation or the session transcript.",
     "developerName": "magroski",
     "category": "Developer Tools",
     "capabilities": [

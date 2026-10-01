@@ -2,8 +2,8 @@
 //
 // There are two audiences. A person manages the vault: adding, editing, and
 // inspecting credentials. An agent uses two commands and no others — `ls` to
-// discover what exists, and `env` to load a credential into the environment of
-// the command it is about to run.
+// discover what exists, and `exec` (or `env`) to load a credential into the
+// environment of the command it is about to run.
 package cli
 
 import (
@@ -40,7 +40,7 @@ const usage = `sa-vault — keep credentials out of your agent's transcript
   sa-vault exec <name>... -- <cmd> run a command with the variables set
   sa-vault env <name>...           print shell that exports the variables
   sa-vault get <name>              print one value (terminal only)
-  sa-vault export <name>           print KEY=VALUE lines (terminal only)
+  sa-vault export <name>           print KEY='VALUE' lines (terminal only)
   sa-vault edit <name>             change metadata or rotate a value
   sa-vault rm <name>               remove a credential
   sa-vault import <file> --as <n>  store a .env file as one credential

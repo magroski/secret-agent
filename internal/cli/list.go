@@ -51,7 +51,7 @@ func cmdList(env Env, args []string) error {
 		rows = append(rows, []string{e.Name, markedVarNames(&e), e.Description})
 	}
 	writeTable(env.Stdout, rows)
-	fmt.Fprintf(env.Stdout, "\n* = sealed. Load one with: eval \"$(%s env %s)\"\n",
+	fmt.Fprintf(env.Stdout, "\n* = sealed. Load one with: %s exec %s -- <command>\n",
 		Bin, entries[0].Name)
 	return nil
 }

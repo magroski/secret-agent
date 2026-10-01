@@ -81,7 +81,7 @@ path, password = sys.argv[1], sys.argv[2]
 blob = open(path, "rb").read().decode("utf-8", "replace")
 
 # A test that passes because the agent never used the credential proves nothing.
-if "sa-vault env" not in blob:
+if "sa-vault exec" not in blob and "sa-vault env" not in blob:
     sys.exit("FAIL: the session never loaded the credential, so this run proves nothing.")
 
 variants = {

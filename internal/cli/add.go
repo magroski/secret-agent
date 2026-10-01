@@ -147,7 +147,7 @@ func cmdAdd(env Env, args []string) error {
 
 	fmt.Fprintf(env.Stdout, "\nAdded %q.\n\n", entry.Name)
 	printEntry(env.Stdout, &entry)
-	fmt.Fprintf(env.Stdout, "\nUse it with:\n  eval \"$(%s env %s)\"\n", Bin, entry.Name)
+	fmt.Fprintf(env.Stdout, "\nUse it with:\n  %s exec %s -- <command>\n", Bin, entry.Name)
 	return nil
 }
 

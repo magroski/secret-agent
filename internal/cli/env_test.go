@@ -457,3 +457,15 @@ func writeFile(t *testing.T, path, contents string) {
 		t.Fatal(err)
 	}
 }
+
+// An audit row must say how a value left: --force means it may have gone into
+// a pipe or a transcript, not onto the owner's screen.
+func TestForcedGetIsAuditedAsForced(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("the-value", "add", "TOKEN")
+	h.mustRun("", "get", "TOKEN", "--force")
+
+	if log := h.mustRun("", "audit"); !strings.Contains(log, "--force") {
+		t.Errorf("audit does not record that get was forced: %s", log)
+	}
+}

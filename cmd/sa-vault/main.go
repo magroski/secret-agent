@@ -1,7 +1,7 @@
 // Command sa-vault keeps credentials out of a coding agent's transcript.
 //
 // It stores named bundles of environment variables and hands them to a command
-// via `eval "$(sa-vault env <name>)"`, so the value reaches the process that
+// via `sa-vault exec <name> -- <cmd>`, so the value reaches the process that
 // needs it without passing through the conversation.
 package main
 

@@ -33,7 +33,7 @@ All of them write plaintext into `~/.claude/projects/**/*.jsonl` or
 `~/.codex/sessions/` — files that are permanent, greppable, and whose contents
 were sent to a model provider.
 
-`sa-vault env` makes the convenient path the safe one. The agent gets a working
+`sa-vault exec` makes the convenient path the safe one. The agent gets a working
 environment in one line, and never has a reason to look at the value.
 
 ## Install
@@ -83,7 +83,7 @@ new build — choose *Always Allow*, or avoid it entirely with
 `SA_VAULT_KEK_FILE`.
 
 **2. The agent instructions.** Both plugins ship the same skill, which teaches
-the agent the `eval "$(sa-vault env …)"` pattern so it stops asking you to paste
+the agent the `sa-vault exec <name> -- <cmd>` pattern so it stops asking you to paste
 credentials. Install whichever agents you use — the binary above is a
 prerequisite for both, and neither plugin carries it.
 

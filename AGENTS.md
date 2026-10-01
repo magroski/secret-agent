@@ -1,8 +1,9 @@
 # secret-agent
 
-One Go binary, `sa-vault`: a credential store whose output is meant to be
-evaluated by a shell, so a value reaches a command without passing through an
-agent's transcript.
+One Go binary, `sa-vault`: a credential store that runs a command with
+credentials in its environment (`exec`), or prints shell for one to evaluate
+(`env`), so a value reaches a command without passing through an agent's
+transcript.
 
 ## Layout
 
@@ -35,7 +36,10 @@ internal/audit/        append-only access log
   — a pty makes an agent's shell look like a terminal. One decision,
   `plaintextRefusal` in `internal/cli/guard.go`; each refusal is audited as
   denied. The marker list is best-effort; the Claude Code `ask` rule is the real
-  control. Plaintext should stay awkward; `env` is the path that should be easy.
+  control. Plaintext should stay awkward; `exec` is the path that should be easy.
+- **No `sa-vault` command goes in a permission `allow` list.** `exec:*` would
+  approve whatever command it wraps; bare `env` prints every value. `exec`
+  also drops `SA_VAULT_PASSPHRASE` from the command's environment.
 
 ## Reading several secrets
 
